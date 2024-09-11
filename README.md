@@ -3,7 +3,7 @@
 
 
 ### Задание 1
-- Дана [схема](1/hsrp_advanced.pkt) для Cisco Packet Tracer, рассматриваемая в лекции.
+- Дана схема - hsrp_advanced.pkt для Cisco Packet Tracer, рассматриваемая в лекции.
 - На данной схеме уже настроено отслеживание интерфейсов маршрутизаторов Gi0/1 (для нулевой группы)
 - Необходимо аналогично настроить отслеживание состояния интерфейсов Gi0/0 (для первой группы).
 - Для проверки корректности настройки, разорвите один из кабелей между одним из маршрутизаторов и Switch0 и запустите ping между PC0 и Server0.
@@ -23,7 +23,59 @@
 - На проверку отправьте получившейся bash-скрипт и конфигурационный файл keepalived, а также скриншот с демонстрацией переезда плавающего ip на другой сервер в случае недоступности порта или файла index.html
 
 ### Решение 2
+```
+#!/bin/bash
 
+# IP-адрес сервера
+IP="127.0.0.1"
+# Порт веб-сервера
+PORT=80
+# Путь к файлу index.html
+INDEX_FILE="/var/www/html/index.html"
+
+# Проверка доступности порта
+nc -zv $IP $PORT >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "Port $PORT is not accessible"
+  exit 1
+fi
+
+# Проверка существования файла index.html
+if [ ! -f "$INDEX_FILE" ]; then
+  echo "File $INDEX_FILE does not exist"
+  exit 1
+fi
+
+exit 0
+```
+
+```
+vrrp_script chk_webserver {
+    script "/usr/local/bin/check_webserver.sh"
+    interval 3
+    fall 2
+    rise 1
+}
+
+vrrp_instance VI_1 {
+    state MASTER
+    interface enp0s3
+    virtual_router_id 51
+    priority 100
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass yourpassword
+    }
+    virtual_ipaddress {
+        192.168.10.55
+    }
+    track_script {
+        chk_webserver
+    }
+}
+```
+![2](img/2.jpg)
 ------
 
 ## Дополнительные задания со звёздочкой*
@@ -39,7 +91,46 @@
 - На проверку отправьте получившийся bash-скрипт и конфигурационный файл keepalived, а также скриншоты логов keepalived с серверов при разных нагрузках
 
 ### Решение 3
+```
+#!/bin/bash
 
+# Файл, который будет содержать приоритет
+PRIORITY_FILE="/etc/keepalived/vrrp_priority.conf"
+
+# Получение текущего значения Load average за последнюю минуту
+LOAD_AVG=$(cat /proc/loadavg | awk '{print $1}')
+
+# Рассчитываем приоритет на основе нагрузки
+if (( $(echo "$LOAD_AVG < 0.5" | bc -l) )); then
+    PRIORITY=100  # Низкая нагрузка — высокий приоритет
+elif (( $(echo "$LOAD_AVG < 1.0" | bc -l) )); then
+    PRIORITY=90  # Средняя нагрузка — пониже приоритет
+else
+    PRIORITY=80  # Высокая нагрузка — низкий приоритет
+fi
+
+# Записываем новое значение приоритета в файл
+echo "priority $PRIORITY" > $PRIORITY_FILE
+```
+
+```
+vrrp_instance VI_1 {
+    state MASTER
+    interface enp0s3
+    virtual_router_id 51
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass yourpassword
+    }
+    virtual_ipaddress {
+        192.168.10.55
+    }
+    include /etc/keepalived/vrrp_priority.conf
+}
+```
+![3](img/3.jpg)
+------
 ------
 
 ### Правила приема работы
